@@ -1,0 +1,46 @@
+#!/bin/bash
+
+Usage () { cat >&2 <<EOF
+Usage: $0 <version>
+EOF
+}
+
+
+# URL for Drupal distributions
+DRUPAL_DIST_URL_PREFIX='https://ftp.drupal.org/files/projects/'
+
+# This program's name
+PROG=$( basename "$0" .bash )
+# Location to store downloads
+CACHE_DIR=${CACHE_DIR:-${HOME}/.cache/${PROG}}
+
+
+set -e
+
+if [ $# -ne 1 ] ; then
+  Usage
+  exit 1
+fi
+
+if ! [[ "$1" =~ ^[0-9]+\.[0-9]+$ ]] ; then
+  Usage
+  exit 1
+fi
+
+target_version=$1
+target_dist_filename=drupal-${target_version}.tar.gz
+target_dist_url=${DRUPAL_DIST_URL_PREFIX}${target_dist_filename}
+target_dist_cache_path=${CACHE_DIR}/${target_dist_filename}
+
+if ! [ -d "$CACHE_DIR" ] ; then
+  mkdir -p -- "$CACHE_DIR"
+fi
+
+if ! [ -f "$target_dist_cache_path" ] ; then
+  wget \
+    --verbose \
+    --timestamping \
+    --directory-prefix="$CACHE_DIR" \
+    --timeout=300 \
+    "$target_dist_url"
+fi
