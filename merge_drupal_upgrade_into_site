@@ -32,6 +32,9 @@ target_dist_filename=drupal-${target_version}.tar.gz
 target_dist_url=${DRUPAL_DIST_URL_PREFIX}${target_dist_filename}
 target_dist_cache_path=${CACHE_DIR}/${target_dist_filename}
 
+
+# Download a copy
+
 if ! [ -d "$CACHE_DIR" ] ; then
   mkdir -p -- "$CACHE_DIR"
 fi
@@ -44,3 +47,11 @@ if ! [ -f "$target_dist_cache_path" ] ; then
     --timeout=300 \
     "$target_dist_url"
 fi
+
+
+# Identify the source files to merge
+#TODO
+
+
+# Replace the working tree files
+#TODO
