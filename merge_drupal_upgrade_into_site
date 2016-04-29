@@ -8,6 +8,16 @@ EOF
 
 # URL for Drupal distributions
 DRUPAL_DIST_URL_PREFIX='https://ftp.drupal.org/files/projects/'
+# Drupal files and directories that should be included
+DRUPAL_UPGRADEABLES=(
+  [6]='cron.php .htaccess includes index.php misc modules profiles robots.txt scripts themes update.php xmlrpc.php'
+  [7]='authorize.php cron.php .gitignore .htaccess includes index.php misc modules profiles robots.txt scripts themes update.php xmlrpc.php'
+)
+# Drupal files that should be excluded
+DISPOSABLES=(
+  [6]='CHANGELOG.txt COPYRIGHT.txt INSTALL.mysql.txt INSTALL.pgsql.txt install.php INSTALL.txt LICENSE.txt MAINTAINERS.txt UPGRADE.txt'
+  [7]='CHANGELOG.txt COPYRIGHT.txt INSTALL.mysql.txt INSTALL.pgsql.txt install.php INSTALL.sqlite.txt INSTALL.txt LICENSE.txt MAINTAINERS.txt README.txt UPGRADE.txt web.config'
+)
 
 # This program's name
 PROG=$( basename "$0" .bash )
