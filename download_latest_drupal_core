@@ -1,0 +1,26 @@
+#!/bin/bash
+set -o nounset
+set -o noclobber
+set -o errexit
+
+function Usage () {
+  cat >&2 <<EOF
+Usage: $0
+Download the latest drupal core distributions.
+EOF
+}
+
+if [ "$#" != 0 ] ; then
+  Usage
+  exit 1
+fi
+
+# Scrape this web page to find download links
+CORE_PROJECT_PAGE='https://www.drupal.org/project/drupal'
+# Adjust '[67]' when we care about different major versions
+DIST_URL_REGEX='http://ftp\.drupal\.org/files/projects/drupal-[67]\.[0-9]+\.tar\.gz'
+
+curl -s "${CORE_PROJECT_PAGE}" \
+| egrep -o "${DIST_URL_REGEX}" \
+| wget --verbose --input-file=- --timestamping --timeout=300
+

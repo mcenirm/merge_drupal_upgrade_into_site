@@ -1,0 +1,118 @@
+#!/bin/bash
+set -o nounset
+set -o noclobber
+set -o errexit
+
+function Usage () {
+  cat >&2 <<EOF
+Usage: $0
+Upgrade the current directory's drupal core installation to the latest.
+This should run as the drupal installation's file owner (eg, 'sudo -u www').
+EOF
+}
+
+# update these as needed
+LATEST_MINOR_VERSIONS=(
+  [6]=37
+  [7]=41
+)
+
+UPGRADEABLES=(
+  [6]='cron.php .htaccess includes index.php misc modules profiles robots.txt scripts themes update.php xmlrpc.php'
+  [7]='authorize.php cron.php .gitignore .htaccess includes index.php misc modules profiles robots.txt scripts themes update.php xmlrpc.php'
+)
+
+DISPOSABLES=(
+  [6]='CHANGELOG.txt COPYRIGHT.txt INSTALL.mysql.txt INSTALL.pgsql.txt install.php INSTALL.txt LICENSE.txt MAINTAINERS.txt UPGRADE.txt'
+  [7]='CHANGELOG.txt COPYRIGHT.txt INSTALL.mysql.txt INSTALL.pgsql.txt install.php INSTALL.sqlite.txt INSTALL.txt LICENSE.txt MAINTAINERS.txt README.txt UPGRADE.txt web.config'
+)
+
+
+if [ "$#" != 0 ] ; then
+  Usage
+  exit 1
+fi
+
+function Error () {
+  echo >&2 "ERROR: $@"
+}
+
+function guess_drupal_core_version () {
+  #drupal-6.30/modules/system/system.module:define('VERSION', '6.30');
+  #drupal-7.26/includes/bootstrap.inc:define('VERSION', '7.26');
+  local guess_files=( modules/system/system.module includes/bootstrap.inc )
+  local guess_file
+  for guess_file in "${guess_files[@]}" ; do
+    if ! [[ -r "${guess_file}" ]] ; then
+      Error "Expected to find file '${guess_file}'."
+      Error 'Is the current directory a Drupal installation?'
+      Usage
+      exit 1
+    fi
+  done
+  local guess=$(
+      cat "${guess_files[@]}" \
+      | grep '\<define\>.*\<VERSION\>' \
+      | tr -dc 0-9.
+    )
+  if [[ -z "${guess}" ]] ; then
+    Error 'Unable to guess Drupal core version.'
+    exit 1
+  fi
+  printf '%s\n' "${guess}"
+}
+
+this_version=$( guess_drupal_core_version )
+this_major_version=${this_version%%.*}
+this_minor_version=${this_version#*.}
+
+if [[ "${LATEST_MINOR_VERSIONS[${this_major_version}]+isknown}" != isknown ]] ; then
+  Error "Unexpected Drupal major version '${this_major_version}'."
+  Error "This script ($0) might need to be updated."
+  exit 1
+fi
+
+latest_minor_version=${LATEST_MINOR_VERSIONS[${this_major_version}]}
+latest_version=${this_major_version}.${latest_minor_version}
+
+if [[ "${this_minor_version}" -gt "${latest_minor_version}" ]] ; then
+  Error "This Drupal installation appears more recent (${this_version}) than expected (${latest_version})."
+  exit 1
+fi
+
+if [[ "${this_minor_version}" -eq "${latest_minor_version}" ]] ; then
+  Error "This Drupal installation appears to be the latest version (${latest_version}) already."
+  exit 1
+fi
+
+save=drupal-old-${this_version}
+upgrade=drupal-${latest_version}
+
+if [[ -e "${save}" ]] ; then
+  Error "Save directory '${save}' already exists."
+  Error 'Was a previous upgrade attempt unsuccessful?'
+  exit 1
+fi
+
+# TODO: implement sanity checks for remaining commands
+
+mkdir -- "${save}"
+
+[[ -e "${upgrade}" ]] && rm -r "${upgrade}"
+
+upgrade_dist=$(dirname "$0")/${upgrade}.tar.gz
+tar xzf "${upgrade_dist}"
+
+# clean up old copies of files that should be removed from a running Drupal site
+for disposable in ${DISPOSABLES[${this_major_version}]} ; do
+  [[ -e "${disposable}" ]] && mv -v -- "${disposable}" "${save}"
+done
+
+mv -v -- ${UPGRADEABLES[${this_major_version}]} "${save}"
+
+cd drupal-"${latest_version}" && mv -v --no-clobber -- ${UPGRADEABLES[${this_major_version}]} .. && cd ..
+
+drush updb
+
+drush st
+
