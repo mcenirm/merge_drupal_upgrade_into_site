@@ -1,0 +1,99 @@
+#!/bin/bash
+
+
+Usage () { cat >&2 <<EOF
+Usage: $0 <version>
+Make a patch to upgrade from current Drupal version
+EOF
+}
+
+
+# Drupal repository
+DRUPAL_REMOTE_URL='https://git.drupal.org/project/drupal.git'
+
+# Drupal files that should be excluded
+DISPOSABLES=(
+  [6]='CHANGELOG.txt COPYRIGHT.txt INSTALL.mysql.txt INSTALL.pgsql.txt install.php INSTALL.txt LICENSE.txt MAINTAINERS.txt UPGRADE.txt'
+  [7]='CHANGELOG.txt COPYRIGHT.txt INSTALL.mysql.txt INSTALL.pgsql.txt install.php INSTALL.sqlite.txt INSTALL.txt LICENSE.txt MAINTAINERS.txt README.txt UPGRADE.txt web.config'
+)
+
+
+set -e
+
+if [ $# -ne 1 ] ; then
+  Usage
+  exit 1
+fi
+
+if ! [[ "$1" =~ ^[0-9]+\.[0-9]+$ ]] ; then
+  Usage
+  exit 1
+fi
+
+
+Error () {
+  echo >&2 "ERROR: $@"
+}
+
+
+guess_drupal_core_version () {
+  #drupal-6.30/modules/system/system.module:define('VERSION', '6.30');
+  #drupal-7.26/includes/bootstrap.inc:define('VERSION', '7.26');
+  local guess_files=( modules/system/system.module includes/bootstrap.inc )
+  local guess_file
+  for guess_file in "${guess_files[@]}" ; do
+    if ! [[ -r "${guess_file}" ]] ; then
+      Error "Expected to find file '${guess_file}'."
+      Error 'Is the current directory a Drupal root?'
+      Usage
+      exit 1
+    fi
+  done
+  local guess=$(
+      cat "${guess_files[@]}" \
+      | grep '\<define\>.*\<VERSION\>' \
+      | tr -dc 0-9.
+    )
+  if [[ -z "${guess}" ]] ; then
+    Error 'Unable to guess Drupal core version.'
+    exit 1
+  fi
+  printf '%s\n' "${guess}"
+}
+
+
+target_version=$1
+current_version=$( guess_drupal_core_version )
+
+major_version=${current_version%%.*}
+if ! [ "$major_version" = "${target_version%%.*}" ] ; then
+  Error "Mismatched versions: $current_version -> $target_version"
+  exit 2
+fi
+
+patch_file_name=upgrade_drupal-${current_version}-${target_version}.patch
+cleanup_current=cleanup_${current_version}
+cleanup_target=cleanup_${target_version}
+
+
+# Is the current directory a git working tree?
+git status > /dev/null || exit $?
+
+# Add git remote for Drupal repository
+git remote get-url drupal 2>/dev/null >/dev/null \
+  || git remote add drupal "$DRUPAL_REMOTE_URL"
+git fetch drupal
+
+# Create cleaned up version of current tag
+git checkout -b "$cleanup_current" "$current_version" >/dev/null
+git rm ${DISPOSABLES[$major_version]} >/dev/null
+git commit -m "Clean up $current_version" >/dev/null
+
+# Create cleaned up version of upgrade tag
+git checkout -b "$cleanup_target" "$target_version" >/dev/null
+git rm ${DISPOSABLES[$major_version]} >/dev/null
+git commit -m "Clean up $target_version" >/dev/null
+
+# Create patch
+git diff -u "$cleanup_current" "$cleanup_target" > "$patch_file_name"
+printf '%s\n' "$patch_file_name"
