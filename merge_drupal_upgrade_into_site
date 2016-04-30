@@ -8,6 +8,8 @@ EOF
 
 # URL for Drupal distributions
 DRUPAL_DIST_URL_PREFIX='https://ftp.drupal.org/files/projects/'
+# Extension for Drupal distribution files
+DRUPAL_DIST_FILE_EXT=.tar.gz
 # Drupal files and directories that should be included
 DRUPAL_UPGRADEABLES=(
   [6]='cron.php .htaccess includes index.php misc modules profiles robots.txt scripts themes update.php xmlrpc.php'
@@ -37,26 +39,84 @@ if ! [[ "$1" =~ ^[0-9]+\.[0-9]+$ ]] ; then
   exit 1
 fi
 
+
+Error () {
+  echo >&2 "ERROR: $@"
+}
+
+
+guess_drupal_core_version () {
+  #drupal-6.30/modules/system/system.module:define('VERSION', '6.30');
+  #drupal-7.26/includes/bootstrap.inc:define('VERSION', '7.26');
+  local guess_files=( modules/system/system.module includes/bootstrap.inc )
+  local guess_file
+  for guess_file in "${guess_files[@]}" ; do
+    if ! [[ -r "${guess_file}" ]] ; then
+      Error "Expected to find file '${guess_file}'."
+      Error 'Is the current directory a Drupal root?'
+      Usage
+      exit 1
+    fi
+  done
+  local guess=$(
+      cat "${guess_files[@]}" \
+      | grep '\<define\>.*\<VERSION\>' \
+      | tr -dc 0-9.
+    )
+  if [[ -z "${guess}" ]] ; then
+    Error 'Unable to guess Drupal core version.'
+    exit 1
+  fi
+  printf '%s\n' "${guess}"
+}
+
+
+download_drupal_dist () {
+  local version=$1
+  local dist_file_name=drupal-${version}${DRUPAL_DIST_FILE_EXT}
+  local dist_url=${DRUPAL_DIST_URL_PREFIX}${dist_file_name}
+  local cached_file_path=${CACHE_DIR}/${dist_file_name}
+
+  if ! [ -d "$CACHE_DIR" ] ; then
+    mkdir -p -- "$CACHE_DIR"
+  fi
+
+  if ! [ -f "$cached_file_path" ] ; then
+    wget \
+      --verbose \
+      --timestamping \
+      --directory-prefix="$CACHE_DIR" \
+      --timeout=300 \
+      "$dist_url"
+  fi
+
+  printf '%s\n' "$cached_file_path"
+}
+
+
+extract_drupal_dist () {
+  local cached_file_path=$1
+  local extracted_path=$( basename "$cached_file_path" ${DRUPAL_DIST_FILE_EXT} )
+
+  if [ -d "$extracted_path" ] ; then
+    echo >&2 "Error: Extracted copy already exists? '$extracted_path'"
+    exit 2
+  fi
+
+  tar xf "$cached_file_path"
+
+  printf '%s\n' "$extracted_path"
+}
+
+
 target_version=$1
-target_dist_filename=drupal-${target_version}.tar.gz
-target_dist_url=${DRUPAL_DIST_URL_PREFIX}${target_dist_filename}
-target_dist_cache_path=${CACHE_DIR}/${target_dist_filename}
+current_version=$( guess_drupal_core_version )
 
+target_cached_file_path=$( download_drupal_dist "$target_version" )
+current_cached_file_path=$( download_drupal_dist "$current_version" )
 
-# Download a copy
-
-if ! [ -d "$CACHE_DIR" ] ; then
-  mkdir -p -- "$CACHE_DIR"
-fi
-
-if ! [ -f "$target_dist_cache_path" ] ; then
-  wget \
-    --verbose \
-    --timestamping \
-    --directory-prefix="$CACHE_DIR" \
-    --timeout=300 \
-    "$target_dist_url"
-fi
+target_extracted=$( extract_drupal_dist "$target_cached_file_path" )
+current_extracted=$( extract_drupal_dist "$current_cached_file_path" )
 
 
 # Identify the source files to merge
